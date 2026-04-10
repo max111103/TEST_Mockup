@@ -2859,12 +2859,16 @@
         var cWidth = cameraArea.clientWidth || window.innerWidth;
         var cHeight = cameraArea.clientHeight || window.innerHeight;
         var targetRatio = cWidth / cHeight;
+
+        // iOS (WKWebView) では videoConstraints 内の facingMode と
+        // start() 第1引数の facingMode が競合するとカメラが起動しない。
+        // また width/height の min/max 制約や resizeMode も iOS 非対応。
+        // → config には videoConstraints を含めず、facingMode は第1引数のみで指定する。
         var config = {
-          fps: 25,
+          fps: 15,
           qrbox: { width: bw, height: bh },
           aspectRatio: targetRatio,
-          experimentalFeatures: { useBarCodeDetectorIfSupported: false },
-          videoConstraints: { facingMode: "environment", width: { min: 640, ideal: 1280, max: 1920 }, height: { min: 480, ideal: 720, max: 1080 }, resizeMode: "none" }
+          experimentalFeatures: { useBarCodeDetectorIfSupported: false }
         };
         html5QrCode.start({ facingMode: "environment" }, config, function(decodedText, result) {
           var c = decodedText.replace(/[^a-zA-Z0-9\-]/g, '');
@@ -2892,9 +2896,8 @@
           }
         }).catch(function(e) {
           console.error("html5QrCode.start error:", e);
-          // カメラ起動失敗時もモーダルは閉じず、エラーメッセージを表示
           var guideText = document.getElementById('scanGuideText');
-          if (guideText) guideText.innerText = 'カメラ起動失敗: ' + (e.message || e) + ' — ブラウザの設定を確認してください';
+          if (guideText) guideText.innerText = 'カメラ起動失敗: ' + (e.message || e);
         });
       } catch(e) {
         console.error("Scanner Init Error:", e);
