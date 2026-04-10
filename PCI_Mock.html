@@ -11,6 +11,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
   <style>
     /* sticky thead の白線対策: th に背景色を直接指定して隙間を埋める */
     thead.sticky th {
@@ -101,78 +102,6 @@
       table {
         min-width: 600px;
       }
-    }
-
-    /* カメラスキャナーオーバーレイ */
-    #camera-scanner-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.9);
-      z-index: 100;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-start;
-    }
-    #camera-scanner-overlay.active {
-      display: flex;
-    }
-    #camera-scanner-overlay .scanner-header {
-      width: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 16px 20px;
-      color: #fff;
-    }
-    #camera-scanner-overlay .scanner-header h2 {
-      font-size: 1.1rem;
-      font-weight: 600;
-    }
-    #camera-scanner-overlay .scanner-body {
-      flex: 1;
-      width: 100%;
-      max-width: 500px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 0 16px;
-    }
-    #camera-scanner-overlay #scanner-reader {
-      width: 100%;
-      border-radius: 12px;
-      overflow: hidden;
-    }
-    #camera-scanner-overlay #scanner-reader video {
-      border-radius: 12px;
-    }
-    #camera-scanner-overlay .scanner-result {
-      width: 100%;
-      max-width: 500px;
-      margin-top: 20px;
-      padding: 12px 16px;
-      background: rgba(255,255,255,0.1);
-      border-radius: 8px;
-      color: #fff;
-      text-align: center;
-      font-size: 0.95rem;
-      min-height: 44px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    #camera-scanner-overlay .scanner-footer {
-      width: 100%;
-      max-width: 500px;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      align-items: center;
-    }
-    #camera-scanner-overlay .scanner-footer button {
-      width: 100%;
-      max-width: 300px;
     }
 
     /* カメラボタン: PC時は非表示、モバイル/タブレットで表示 */
@@ -474,25 +403,6 @@
     </div>
   </main>
 
-  <!-- カメラスキャナーオーバーレイ -->
-  <div id="camera-scanner-overlay">
-    <div class="scanner-header">
-      <h2 id="scanner-title">バーコードスキャン</h2>
-      <button onclick="closeCameraScanner()" class="p-2 rounded-lg hover:bg-white hover:bg-opacity-20 transition-colors">
-        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-      </button>
-    </div>
-    <div class="scanner-body">
-      <div id="scanner-reader"></div>
-      <div class="scanner-result" id="scanner-result-text">カメラをバーコードに向けてください</div>
-    </div>
-    <div class="scanner-footer">
-      <button onclick="closeCameraScanner()" class="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-medium transition-colors">
-        手動入力に切り替え
-      </button>
-    </div>
-  </div>
-
   <!-- サイドバーオーバーレイ（モバイル用） -->
   <div id="sidebar-overlay" onclick="closeMobileSidebar()"></div>
 
@@ -526,114 +436,6 @@
 
     // ページ読み込み時にもアイコンを初期化
     lucide.createIcons();
-
-    // ===== カメラスキャナー共通機能 =====
-    let html5QrCode = null;
-    let scannerCallback = null; // スキャン成功時に呼ばれるコールバック
-
-    // カメラスキャナーを開く
-    // targetInputId: スキャン結果を入力するinput要素のID
-    // title: スキャナー画面のタイトル
-    // onScanCallback: スキャン成功時のコールバック (decodedText) => void
-    function openCameraScanner(targetInputId, title, onScanCallback) {
-      const overlay = document.getElementById('camera-scanner-overlay');
-      const titleEl = document.getElementById('scanner-title');
-      const resultEl = document.getElementById('scanner-result-text');
-
-      titleEl.textContent = title || 'バーコードスキャン';
-      resultEl.textContent = 'カメラをバーコードに向けてください';
-      overlay.classList.add('active');
-
-      scannerCallback = function(decodedText) {
-        // 結果を表示
-        resultEl.textContent = '読取成功: ' + decodedText;
-        resultEl.style.background = 'rgba(34,197,94,0.3)';
-
-        // 入力欄にセット
-        const input = document.getElementById(targetInputId);
-        if (input) {
-          input.value = decodedText;
-        }
-
-        // スキャナーを停止して閉じる
-        stopCameraScanner();
-        overlay.classList.remove('active');
-
-        // コールバック実行
-        if (onScanCallback) {
-          setTimeout(function() { onScanCallback(decodedText); }, 300);
-        }
-      };
-
-      // スキャナー開始
-      startCameraScanner();
-    }
-
-    function startCameraScanner() {
-      const readerEl = document.getElementById('scanner-reader');
-      readerEl.innerHTML = '';
-
-      html5QrCode = new Html5Qrcode('scanner-reader');
-
-      const config = {
-        fps: 10,
-        qrbox: function(viewfinderWidth, viewfinderHeight) {
-          const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-          const size = Math.floor(minEdge * 0.7);
-          return { width: Math.max(size, 200), height: Math.max(Math.floor(size * 0.5), 100) };
-        },
-        formatsToSupport: [
-          Html5QrcodeSupportedFormats.QR_CODE,
-          Html5QrcodeSupportedFormats.EAN_13,
-          Html5QrcodeSupportedFormats.EAN_8,
-          Html5QrcodeSupportedFormats.CODE_128,
-          Html5QrcodeSupportedFormats.CODE_39,
-          Html5QrcodeSupportedFormats.CODE_93,
-          Html5QrcodeSupportedFormats.UPC_A,
-          Html5QrcodeSupportedFormats.UPC_E,
-          Html5QrcodeSupportedFormats.ITF,
-          Html5QrcodeSupportedFormats.CODABAR
-        ]
-      };
-
-      html5QrCode.start(
-        { facingMode: 'environment' },
-        config,
-        function(decodedText) {
-          if (scannerCallback) scannerCallback(decodedText);
-        },
-        function(errorMessage) {
-          // スキャン中のエラーは無視（読取中のノイズ）
-        }
-      ).catch(function(err) {
-        const resultEl = document.getElementById('scanner-result-text');
-        resultEl.textContent = 'カメラの起動に失敗しました。カメラへのアクセスを許可してください。';
-        resultEl.style.background = 'rgba(239,68,68,0.3)';
-        console.error('Camera start error:', err);
-      });
-    }
-
-    function stopCameraScanner() {
-      if (html5QrCode) {
-        html5QrCode.stop().then(function() {
-          html5QrCode.clear();
-          html5QrCode = null;
-        }).catch(function(err) {
-          console.error('Camera stop error:', err);
-          html5QrCode = null;
-        });
-      }
-    }
-
-    function closeCameraScanner() {
-      stopCameraScanner();
-      const overlay = document.getElementById('camera-scanner-overlay');
-      overlay.classList.remove('active');
-      const resultEl = document.getElementById('scanner-result-text');
-      resultEl.style.background = 'rgba(255,255,255,0.1)';
-      scannerCallback = null;
-    }
-    // ===== カメラスキャナー共通機能 ここまで =====
 
     // ユーザーメニューの表示/非表示を切り替え
     function toggleUserMenu() {
@@ -3002,13 +2804,13 @@
           video.srcObject = _cameraStream;
         }
 
-        // BarcodeDetector が使える場合は自動読取
+        // BarcodeDetector が使える場合は優先、なければ ZXing にフォールバック
+        const status = document.getElementById('camera-scanner-status');
         if ('BarcodeDetector' in window) {
           try {
             const detector = new window.BarcodeDetector({
               formats: ['code_128', 'code_39', 'ean_13', 'ean_8', 'qr_code', 'upc_a', 'upc_e', 'itf', 'codabar']
             });
-            const status = document.getElementById('camera-scanner-status');
             if (status) status.textContent = '読み取り中…バーコードを枠内に映してください';
 
             _cameraScanLoop = setInterval(async () => {
@@ -3022,12 +2824,12 @@
               } catch (_) { /* ignore */ }
             }, 400);
           } catch (e) {
-            const status = document.getElementById('camera-scanner-status');
-            if (status) status.textContent = '自動読取は未対応のため、下の入力欄から手入力してください';
+            // BarcodeDetector の初期化に失敗した場合は ZXing にフォールバック
+            _startZxingScanner(video, targetInputId, status);
           }
         } else {
-          const status = document.getElementById('camera-scanner-status');
-          if (status) status.textContent = 'このブラウザは自動読取に未対応です。下の入力欄から手入力してください';
+          // BarcodeDetector 未対応ブラウザ（iOS等）は ZXing を使用
+          _startZxingScanner(video, targetInputId, status);
         }
       } catch (err) {
         const status = document.getElementById('camera-scanner-status');
@@ -3058,12 +2860,66 @@
 
     function closeCameraScanner() {
       if (_cameraScanLoop) { clearInterval(_cameraScanLoop); _cameraScanLoop = null; }
+      if (_zxingReader) {
+        _zxingReader.reset();
+        _zxingReader = null;
+      }
       if (_cameraStream) {
         _cameraStream.getTracks().forEach(t => t.stop());
         _cameraStream = null;
       }
       const overlay = document.getElementById('camera-scanner-overlay');
       if (overlay) overlay.remove();
+    }
+
+    // ZXing によるバーコード読取（BarcodeDetector 未対応ブラウザ用フォールバック）
+    let _zxingReader = null;
+
+    function _startZxingScanner(video, targetInputId, statusEl) {
+      if (typeof ZXing === 'undefined') {
+        if (statusEl) statusEl.textContent = 'バーコードライブラリの読み込みに失敗しました。手入力してください';
+        return;
+      }
+
+      const hints = new Map();
+      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+        ZXing.BarcodeFormat.QR_CODE,
+        ZXing.BarcodeFormat.EAN_13,
+        ZXing.BarcodeFormat.EAN_8,
+        ZXing.BarcodeFormat.CODE_128,
+        ZXing.BarcodeFormat.CODE_39,
+        ZXing.BarcodeFormat.CODE_93,
+        ZXing.BarcodeFormat.UPC_A,
+        ZXing.BarcodeFormat.UPC_E,
+        ZXing.BarcodeFormat.ITF,
+        ZXing.BarcodeFormat.CODABAR
+      ]);
+      hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+
+      _zxingReader = new ZXing.MultiFormatReader();
+      _zxingReader.setHints(hints);
+
+      if (statusEl) statusEl.textContent = '読み取り中…バーコードを枠内に映してください';
+
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+
+      _cameraScanLoop = setInterval(() => {
+        if (!video || video.readyState < 2) return;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        try {
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const luminance = new ZXing.RGBLuminanceSource(imageData.data, canvas.width, canvas.height);
+          const binarizer = new ZXing.HybridBinarizer(luminance);
+          const bitmap = new ZXing.BinaryBitmap(binarizer);
+          const result = _zxingReader.decode(bitmap);
+          if (result && result.getText()) {
+            finishCameraScan(targetInputId, result.getText());
+          }
+        } catch (_) { /* デコード失敗は無視（読取中） */ }
+      }, 400);
     }
 
     // 入力欄の隣に置くカメラボタンHTMLを生成
