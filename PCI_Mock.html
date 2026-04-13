@@ -2067,7 +2067,7 @@
             <div class="flex items-center gap-2">
               <input type="text" id="barcode-input" placeholder="バーコードをスキャンまたは入力してください"
                 class="flex-1 min-w-0 px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg"
-                onkeypress="handleBarcodeInput(event)" autofocus>
+                onkeydown="handleBarcodeInput(event)" autofocus>
               <button onclick="openCameraScanner('barcode-input')" class="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors duration-200" title="カメラでスキャン">
                 <i data-lucide="camera" class="w-5 h-5"></i>
               </button>
@@ -2119,9 +2119,10 @@
       // アイコンを再初期化
       lucide.createIcons();
 
-      // バーコード入力欄にフォーカス
+      // バーコード入力欄にフォーカス + ハンディターミナル対応
       setTimeout(() => {
         document.getElementById('barcode-input')?.focus();
+        setupHandheldSupport();
       }, 100);
     }
 
@@ -2248,6 +2249,27 @@
           processBarcode(barcode);
         }
       }
+    }
+
+    // ハンディターミナル対応: inputイベントで末尾の改行・タブを検知して自動実行
+    // キーエンスBT等はスキャン後に改行/タブを付加する設定が多い
+    let _barcodeInputTimer = null;
+    function setupHandheldSupport() {
+      const input = document.getElementById('barcode-input');
+      if (!input || input.dataset.handheldReady) return;
+      input.dataset.handheldReady = '1';
+      input.addEventListener('input', function() {
+        clearTimeout(_barcodeInputTimer);
+        // スキャナーは高速に文字を入力するので、入力が止まったら自動実行
+        _barcodeInputTimer = setTimeout(function() {
+          const val = input.value;
+          if (val && (val.endsWith('\n') || val.endsWith('\r') || val.endsWith('\t'))) {
+            input.value = val.replace(/[\n\r\t]+$/, '');
+            const barcode = input.value.trim();
+            if (barcode) processBarcode(barcode);
+          }
+        }, 50);
+      });
     }
 
     // カメラスキャン結果を処理（入荷検品用）
@@ -2395,70 +2417,72 @@
       overlay.className = 'fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center backdrop-blur-sm';
       overlay.id = 'tana-bango-modal';
       overlay.innerHTML = `
-        <div class="bg-white rounded-xl shadow-xl w-full mx-4 overflow-hidden" style="max-width:560px">
+        <div class="bg-white rounded-xl shadow-xl w-full mx-4 overflow-y-auto" style="max-width:560px; max-height:85vh;">
           <!-- ヘッダー -->
-          <div class="px-6 py-5 border-b border-gray-200">
-            <h2 class="text-xl font-bold text-gray-800">検品入力</h2>
+          <div class="px-4 py-3 border-b border-gray-200">
+            <h2 class="text-lg font-bold text-gray-800">検品入力</h2>
           </div>
 
           <!-- 商品情報 -->
-          <div class="px-6 py-5 space-y-3 text-gray-700 border-b border-gray-100">
-            <div><span class="text-sm text-gray-400 block mb-0.5">商品名</span><span class="text-base font-semibold">${matchedData.商品名}</span></div>
-            <div><span class="text-sm text-gray-400 block mb-0.5">SKU</span><span class="text-base font-semibold">${matchedData.SKU || '-'}</span></div>
-            <div class="grid grid-cols-2 gap-4">
-              <div><span class="text-sm text-gray-400 block mb-0.5">カラー</span><span class="text-base font-semibold">${matchedData.カラー || '-'}</span></div>
-              <div><span class="text-sm text-gray-400 block mb-0.5">サイズ</span><span class="text-base font-semibold">${matchedData.サイズ || '-'}</span></div>
+          <div class="px-4 py-3 space-y-1 text-gray-700 border-b border-gray-100 text-sm">
+            <div class="flex items-baseline gap-2"><span class="text-xs text-gray-400 w-16 flex-shrink-0">商品名</span><span class="font-semibold">${matchedData.商品名}</span></div>
+            <div class="flex items-baseline gap-2"><span class="text-xs text-gray-400 w-16 flex-shrink-0">SKU</span><span class="font-semibold">${matchedData.SKU || '-'}</span></div>
+            <div class="grid grid-cols-2 gap-2">
+              <div class="flex items-baseline gap-2"><span class="text-xs text-gray-400">カラー</span><span class="font-semibold">${matchedData.カラー || '-'}</span></div>
+              <div class="flex items-baseline gap-2"><span class="text-xs text-gray-400">サイズ</span><span class="font-semibold">${matchedData.サイズ || '-'}</span></div>
             </div>
-            <div><span class="text-sm text-gray-400 block mb-0.5">入荷予定日</span><span class="text-base font-semibold">${matchedData.日付 || '-'}</span></div>
-            <div><span class="text-sm text-gray-400 block mb-0.5">未検品数</span><span class="text-base font-semibold text-blue-600">${maxCount} 件</span></div>
+            <div class="grid grid-cols-2 gap-2">
+              <div class="flex items-baseline gap-2"><span class="text-xs text-gray-400">予定日</span><span class="font-semibold">${matchedData.日付 || '-'}</span></div>
+              <div class="flex items-baseline gap-2"><span class="text-xs text-gray-400">未検品</span><span class="font-semibold text-blue-600">${maxCount} 件</span></div>
+            </div>
           </div>
 
           <!-- 個数 -->
-          <div class="px-6 pt-5">
-            <label class="block text-base font-medium text-gray-600 mb-2">個数</label>
-            <div class="flex items-center gap-3">
-              <button onclick="adjustKenpinCount(-1)" class="w-12 h-12 flex items-center justify-center bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-xl font-bold">−</button>
+          <div class="px-4 pt-3">
+            <label class="block text-sm font-medium text-gray-600 mb-1">個数</label>
+            <div class="flex items-center gap-2">
+              <button onclick="adjustKenpinCount(-1)" class="w-10 h-10 flex items-center justify-center bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-lg font-bold">−</button>
               <input type="number" id="kenpin-count-input" value="1" min="1" max="${maxCount}"
-                class="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg text-center bg-white font-semibold"
+                class="flex-1 px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base text-center bg-white font-semibold"
                 onchange="validateKenpinCount()">
-              <button onclick="adjustKenpinCount(1)" class="w-12 h-12 flex items-center justify-center bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-xl font-bold">+</button>
+              <button onclick="adjustKenpinCount(1)" class="w-10 h-10 flex items-center justify-center bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-lg font-bold">+</button>
             </div>
-            <p class="mt-1 text-sm text-gray-400">未検品数: ${maxCount} 件（SKUスキャンでも個数が増えます）</p>
+            <p class="mt-0.5 text-xs text-gray-400">未検品数: ${maxCount} 件（SKUスキャンでも個数が増えます）</p>
           </div>
 
           <!-- SKUスキャン -->
-          <div class="px-6 pt-4">
-            <label class="block text-base font-medium text-gray-600 mb-2">SKUスキャン（追加）</label>
+          <div class="px-4 pt-3">
+            <label class="block text-sm font-medium text-gray-600 mb-1">SKUスキャン（追加）</label>
             <div class="flex items-center gap-2">
-              <input type="text" id="modal-sku-scan-input" placeholder="同一SKUをスキャンして個数を追加"
-                class="flex-1 min-w-0 px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg bg-white"
-                onkeypress="handleModalSkuScan(event)">
-              <button onclick="openCameraScanner('modal-sku-scan-input')" class="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors duration-200" title="カメラでスキャン">
+              <input type="text" id="modal-sku-scan-input" placeholder="同一SKUをスキャン"
+                class="flex-1 min-w-0 px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base bg-white"
+                onkeydown="if(event.key==='Enter'){event.preventDefault();handleModalSkuScan(event);}">
+              <button onclick="openCameraScanner('modal-sku-scan-input')" class="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors duration-200" title="カメラでスキャン">
                 <i data-lucide="camera" class="w-5 h-5"></i>
               </button>
             </div>
-            <p id="modal-sku-scan-message" class="mt-1 text-sm text-green-600 hidden"></p>
+            <p id="modal-sku-scan-message" class="mt-0.5 text-sm text-green-600 hidden"></p>
           </div>
 
           <!-- 棚番号入力 -->
-          <div class="px-6 py-5">
-            <label class="block text-base font-medium text-gray-600 mb-2">棚番号 <span class="text-red-500">*</span></label>
+          <div class="px-4 py-3">
+            <label class="block text-sm font-medium text-gray-600 mb-1">棚番号 <span class="text-red-500">*</span></label>
             <div class="flex items-center gap-2">
               <input type="text" id="tana-bango-input" placeholder="棚番号をスキャンまたは入力"
-                class="flex-1 min-w-0 px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg bg-white"
-                onkeypress="handleTanaBangoInput(event)">
-              <button onclick="openCameraScanner('tana-bango-input')" class="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors duration-200" title="カメラでスキャン">
+                class="flex-1 min-w-0 px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base bg-white"
+                onkeydown="if(event.key==='Enter'){event.preventDefault();handleTanaBangoInput(event);}">
+              <button onclick="openCameraScanner('tana-bango-input')" class="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors duration-200" title="カメラでスキャン">
                 <i data-lucide="camera" class="w-5 h-5"></i>
               </button>
             </div>
           </div>
 
           <!-- ボタン -->
-          <div class="px-6 pb-6 flex gap-3">
-            <button onclick="cancelTanaBangoInput()" class="flex-1 px-4 py-3 bg-white text-gray-600 rounded-lg hover:bg-gray-50 transition-colors duration-150 text-base border border-gray-300">
+          <div class="px-4 pb-4 flex gap-3">
+            <button onclick="cancelTanaBangoInput()" class="flex-1 px-3 py-2.5 bg-white text-gray-600 rounded-lg hover:bg-gray-50 transition-colors duration-150 text-sm border border-gray-300">
               キャンセル
             </button>
-            <button onclick="confirmTanaBangoInput()" class="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-150 text-base font-semibold">
+            <button onclick="confirmTanaBangoInput()" class="flex-1 px-3 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-150 text-sm font-semibold">
               確定
             </button>
           </div>
@@ -11866,12 +11890,8 @@
               <label class="block text-xs font-semibold text-gray-700 mb-1">配送業者</label>
               <select id="edit-haisogyosha-${r.index}" class="w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                 <option value="" ${!r.data.配送業者 ? 'selected' : ''}>選択</option>
-                <option value="佐川急便" ${r.data.配送業者 === '佐川急便' ? 'selected' : ''}>佐川急便</option>
                 <option value="福山通運" ${r.data.配送業者 === '福山通運' ? 'selected' : ''}>福山通運</option>
                 <option value="ヤマト運輸" ${r.data.配送業者 === 'ヤマト運輸' ? 'selected' : ''}>ヤマト運輸</option>
-                <option value="日本郵便" ${r.data.配送業者 === '日本郵便' ? 'selected' : ''}>日本郵便</option>
-                <option value="SBS即配" ${r.data.配送業者 === 'SBS即配' ? 'selected' : ''}>SBS即配</option>
-                <option value="YCお届け便" ${r.data.配送業者 === 'YCお届け便' ? 'selected' : ''}>YCお届け便</option>
               </select>
             </div>
             <div>
@@ -19367,11 +19387,8 @@
               <label class="block text-sm font-medium text-gray-700 mb-2">配送業者</label>
               <select id="edit-shukka-haisogyosha" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="" ${!data.配送業者 ? 'selected' : ''}>選択してください</option>
-                <option value="ヤマト運輸" ${data.配送業者 === 'ヤマト運輸' ? 'selected' : ''}>ヤマト運輸</option>
-                <option value="佐川急便" ${data.配送業者 === '佐川急便' ? 'selected' : ''}>佐川急便</option>
-                <option value="日本郵便" ${data.配送業者 === '日本郵便' ? 'selected' : ''}>日本郵便</option>
-                <option value="西濃運輸" ${data.配送業者 === '西濃運輸' ? 'selected' : ''}>西濃運輸</option>
                 <option value="福山通運" ${data.配送業者 === '福山通運' ? 'selected' : ''}>福山通運</option>
+                <option value="ヤマト運輸" ${data.配送業者 === 'ヤマト運輸' ? 'selected' : ''}>ヤマト運輸</option>
               </select>
             </div>
             <div>
