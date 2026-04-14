@@ -5077,6 +5077,7 @@
       const data = zaikoDataArray[index];
       const originalSku = data.SKU;
       const originalNimotsu = data.荷物番号;
+      const originalKanri = data.管理番号;
 
       // 更新されたデータを取得
       const updatedData = {
@@ -5093,34 +5094,42 @@
         備考: document.getElementById('edit-zaiko-bikou').value
       };
 
-      // kenpinDataとregisteredDataを更新
-      kenpinData.forEach(kenpin => {
-        if (kenpin.SKU === originalSku && kenpin.荷物番号 === originalNimotsu) {
-          kenpin.取引先コード = updatedData.取引先コード;
-          kenpin.商品名 = updatedData.商品名;
-          kenpin.商品番号 = updatedData.商品番号;
-          kenpin.SKU = updatedData.SKU;
-          kenpin.荷物番号 = updatedData.荷物番号;
-          kenpin.棚番号 = updatedData.棚番号;
+      // 対象を一意に特定するマッチ関数（管理番号があればそれで特定、なければSKU+荷物番号）
+      function isExactMatch(item) {
+        if (originalKanri) {
+          return item.管理番号 === originalKanri;
         }
-      });
+        return item.SKU === originalSku && item.荷物番号 === originalNimotsu;
+      }
 
-      registeredData.forEach(reg => {
-        if (reg.SKU === originalSku && reg.荷物番号 === originalNimotsu) {
-          reg.取引先コード = updatedData.取引先コード;
-          reg.商品名 = updatedData.商品名;
-          reg.商品番号 = updatedData.商品番号;
-          reg.SKU = updatedData.SKU;
-          reg.荷物番号 = updatedData.荷物番号;
-          reg.棚番号 = updatedData.棚番号;
-          reg.定価 = updatedData.定価;
-          reg.在庫ステータス = updatedData.在庫ステータス;
-          reg.入荷拠点 = updatedData.入荷拠点;
-          reg.備考 = updatedData.備考;
-        }
-      });
+      // kenpinDataを更新（該当1件のみ）
+      const kenpinTarget = kenpinData.find(k => isExactMatch(k));
+      if (kenpinTarget) {
+        kenpinTarget.取引先コード = updatedData.取引先コード;
+        kenpinTarget.商品名 = updatedData.商品名;
+        kenpinTarget.商品番号 = updatedData.商品番号;
+        kenpinTarget.SKU = updatedData.SKU;
+        kenpinTarget.荷物番号 = updatedData.荷物番号;
+        kenpinTarget.棚番号 = updatedData.棚番号;
+      }
+
+      // registeredDataを更新（該当1件のみ）
+      const regTarget = registeredData.find(r => isExactMatch(r));
+      if (regTarget) {
+        regTarget.取引先コード = updatedData.取引先コード;
+        regTarget.商品名 = updatedData.商品名;
+        regTarget.商品番号 = updatedData.商品番号;
+        regTarget.SKU = updatedData.SKU;
+        regTarget.荷物番号 = updatedData.荷物番号;
+        regTarget.棚番号 = updatedData.棚番号;
+        regTarget.定価 = updatedData.定価;
+        regTarget.在庫ステータス = updatedData.在庫ステータス;
+        regTarget.入荷拠点 = updatedData.入荷拠点;
+        regTarget.備考 = updatedData.備考;
+      }
 
       closeEditDialog();
+      zaikoMap.clear();
       displayZaikoData();
       showNotification('在庫データを更新しました', 'success');
     }
@@ -5131,34 +5140,35 @@
         const data = zaikoDataArray[index];
         const originalSku = data.SKU;
         const originalNimotsu = data.荷物番号;
+        const originalKanri = data.管理番号;
 
-        // kenpinDataから削除
-        const kenpinIndex = kenpinData.findIndex(kenpin =>
-          kenpin.SKU === originalSku && kenpin.荷物番号 === originalNimotsu
-        );
+        function isExactMatch(item) {
+          if (originalKanri) return item.管理番号 === originalKanri;
+          return item.SKU === originalSku && item.荷物番号 === originalNimotsu;
+        }
+
+        // kenpinDataから削除（該当1件のみ）
+        const kenpinIndex = kenpinData.findIndex(k => isExactMatch(k));
         if (kenpinIndex !== -1) {
           kenpinData.splice(kenpinIndex, 1);
         }
 
-        // registeredDataから削除
-        const registeredIndex = registeredData.findIndex(reg =>
-          reg.SKU === originalSku && reg.荷物番号 === originalNimotsu
-        );
+        // registeredDataから削除（該当1件のみ）
+        const registeredIndex = registeredData.findIndex(r => isExactMatch(r));
         if (registeredIndex !== -1) {
           registeredData.splice(registeredIndex, 1);
         }
 
         // TRデータインポートで追加されたデータから削除
         if (window.importedTRData && window.importedTRData.length > 0) {
-          const importedIndex = window.importedTRData.findIndex(item =>
-            item.SKU === originalSku && (item.荷物番号 === originalNimotsu || !item.荷物番号)
-          );
+          const importedIndex = window.importedTRData.findIndex(t => isExactMatch(t));
           if (importedIndex !== -1) {
             window.importedTRData.splice(importedIndex, 1);
           }
         }
 
         closeEditDialog();
+        zaikoMap.clear();
         displayZaikoData();
         showNotification('在庫データを削除しました', 'success');
       }
@@ -5267,36 +5277,33 @@
         if (updates.入荷日) target.入荷日 = updates.入荷日;
       }
 
-      // 各選択データに対して更新を適用
+      // 各選択データに対して更新を適用（チェックされたデータのみ）
       indices.forEach(index => {
         const data = zaikoDataArray[index];
         const originalSku = data.SKU;
         const originalNimotsu = data.荷物番号;
-        const originalShohinBango = data.商品番号;
+        const originalKanri = data.管理番号;
 
-        // kenpinDataを更新
-        kenpinData.forEach(kenpin => {
-          if (kenpin.SKU === originalSku && kenpin.荷物番号 === originalNimotsu) {
-            applyUpdates(kenpin);
+        // 対象を一意に特定するマッチ関数
+        function isExactMatch(item) {
+          if (originalKanri) {
+            return item.管理番号 === originalKanri;
           }
-        });
+          return item.SKU === originalSku && item.荷物番号 === originalNimotsu;
+        }
 
-        // registeredDataを更新（複数マッチの可能性を考慮）
-        const matchedRegisteredData = registeredData.filter(reg =>
-          reg.SKU === originalSku && reg.荷物番号 === originalNimotsu
-        );
+        // kenpinDataを更新（該当1件のみ）
+        const kenpinTarget = kenpinData.find(k => isExactMatch(k));
+        if (kenpinTarget) applyUpdates(kenpinTarget);
 
-        matchedRegisteredData.forEach(reg => {
-          applyUpdates(reg);
-        });
+        // registeredDataを更新（該当1件のみ）
+        const regTarget = registeredData.find(r => isExactMatch(r));
+        if (regTarget) applyUpdates(regTarget);
 
-        // TRDataも更新対象にする
+        // TRDataも更新対象にする（該当1件のみ）
         if (window.importedTRData) {
-          window.importedTRData.forEach(trData => {
-            if (trData.SKU === originalSku && trData.荷物番号 === originalNimotsu) {
-              applyUpdates(trData);
-            }
-          });
+          const trTarget = window.importedTRData.find(t => isExactMatch(t));
+          if (trTarget) applyUpdates(trTarget);
         }
       });
 
